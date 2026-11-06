@@ -220,6 +220,11 @@ export async function createContainer(
     ports[`${restPort}/tcp`] = {};
     bindings[`${restPort}/tcp`] = [{ HostPort: String(restPort) }];
   }
+  if (rec.settings.RCONEnabled) {
+    const rconPort = rec.settings.RCONPort;
+    ports[`${rconPort}/tcp`] = {};
+    bindings[`${rconPort}/tcp`] = [{ HostPort: String(rconPort) }];
+  }
 
   const launchArgs = [
     `-port=${rec.gamePort}`,

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FiAlertTriangle, FiCopy, FiDownloadCloud, FiFolder, FiHardDrive, FiLayout, FiSave, FiTrash2 } from "react-icons/fi";
 import type { InstanceDetail } from "@palserver/shared";
+import { ConnectionSettingsSchema } from "@palserver/shared";
 import type { AgentClient } from "./api";
 import { CopyPath } from "./CopyPath";
 import { FileBrowserDialog } from "./FileManager";
@@ -32,6 +33,8 @@ export function InstanceSettingsTab({
     <div className="flex w-full flex-col gap-4">
       <AutoStartCard client={client} detail={detail} />
 
+      <ConnectionSettingsCard key={detail.id} client={client} detail={detail} onChanged={onChanged} />
+
       <ServerFilesCard client={client} instanceId={detail.id} />
 
       {detail.backend === "native" && (
@@ -60,6 +63,62 @@ export function InstanceSettingsTab({
         adminPassword={String(detail.settings.AdminPassword ?? "")}
         onDeleted={onDeleted}
       />
+    </div>
+  );
+}
+
+function ConnectionSettingsCard({ client, detail, onChanged }: {
+  client: AgentClient; detail: InstanceDetail; onChanged: () => void;
+}) {
+  const [values, setValues] = useState({
+    restApiUrl: detail.connection?.restApiUrl ?? "",
+    rconAddress: detail.connection?.rconAddress ?? "",
+    palDefenderAddress: detail.connection?.palDefenderAddress ?? "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const fields = [
+    { key: "restApiUrl", label: "REST API 访问地址", placeholder: `http://192.168.1.10:${detail.settings.RESTAPIPort}` },
+    { key: "rconAddress", label: "RCON 访问地址", placeholder: `192.168.1.10:${detail.settings.RCONPort}` },
+    { key: "palDefenderAddress", label: "PalDefender REST 访问地址（可选）", placeholder: "192.168.1.10:8213" },
+  ] as const;
+  const save = async () => {
+    setError(null);
+    setSaved(false);
+    const parsed = ConnectionSettingsSchema.safeParse(values);
+    if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
+    setBusy(true);
+    try {
+      const result = await client.updateConnection(detail.id, parsed.data);
+      setValues({ restApiUrl: result.restApiUrl ?? "", rconAddress: result.rconAddress ?? "", palDefenderAddress: result.palDefenderAddress ?? "" });
+      setSaved(true);
+      onChanged();
+    } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className={`${card} flex flex-col gap-3`}>
+      <h3 className="text-sm font-extrabold">{t("服务器连接地址")}</h3>
+      <p className="text-[13px] text-ink-muted">
+        {t("填写管理程序能够访问的地址。留空使用默认地址；保存后立即用于新的连接，不改变游戏监听端口。")}
+      </p>
+      <p className="text-xs text-ink-muted">
+        {t("REST 地址支持 http/https，可包含 /v1/api。RCON 填写主机:端口。REST 和 RCON 继续使用管理员密码，PalDefender 使用原有 Token。")}
+      </p>
+      {fields.map(({ key, label, placeholder }) => (
+        <label key={key} className={labelCls}>
+          {t(label)}
+          <input className={inputCls} value={values[key]} placeholder={placeholder} disabled={busy}
+            autoComplete="off" spellCheck={false}
+            onChange={(e) => { setValues((v) => ({ ...v, [key]: e.target.value })); setSaved(false); }} />
+        </label>
+      ))}
+      {error && <p className={errorCls} role="alert">{error}</p>}
+      {saved && <p className="text-xs text-grass" role="status">{t("连接地址已保存")}</p>}
+      <button className={`${btn} self-start`} onClick={() => void save()} disabled={busy}>
+        {busy ? t("保存中…") : t("保存连接地址")}
+      </button>
     </div>
   );
 }

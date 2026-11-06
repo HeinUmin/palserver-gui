@@ -6,6 +6,7 @@ import type {
   RestServerInfo,
 } from "@palserver/shared";
 import type { InstanceRecord } from "./store.js";
+import { restApiBaseUrl } from "./connections.js";
 
 /**
  * Thin proxy over the Palworld dedicated server's own REST API
@@ -29,16 +30,6 @@ class RestError extends Error {
   }
 }
 
-/** docker/native: REST API on 127.0.0.1:<RESTAPIPort>; k8s: ClusterIP Service
- * (<service>.<namespace>) reachable from the agent. All backends use
- * RESTAPIPort directly — docker binds container port = host port (1:1). */
-async function baseUrl(rec: InstanceRecord): Promise<string> {
-  if (rec.backend === "k8s" && rec.k8sServiceName && rec.k8sNamespace) {
-    return `http://${rec.k8sServiceName}.${rec.k8sNamespace}:${rec.settings.RESTAPIPort}/v1/api`;
-  }
-  return `http://127.0.0.1:${rec.settings.RESTAPIPort}/v1/api`;
-}
-
 function requireRest(rec: InstanceRecord): void {
   if (!rec.settings.RESTAPIEnabled) {
     throw new RestError("REST API 未啟用 — 請到世界設定開啟 RESTAPIEnabled 並重啟", 409);
@@ -55,7 +46,7 @@ async function call<T>(
 ): Promise<T> {
   requireRest(rec);
   const auth = Buffer.from(`admin:${rec.settings.AdminPassword}`).toString("base64");
-  const base = await baseUrl(rec);
+  const base = restApiBaseUrl(rec);
   const timeoutMs = init?.timeoutMs ?? TIMEOUT_MS;
   let res: Response;
   try {
