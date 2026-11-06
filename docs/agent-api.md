@@ -95,7 +95,7 @@ HTTP 狀態碼。
 |---|---|---|---|
 | `GET /api/instances` | — | `InstanceSummary[]` | 全部實例摘要清單 |
 | `POST /api/instances` | 型別 `CreateInstanceInput`:`name`、`backend`(native/docker/k8s)、`flavor`(vanilla/modded)、`dockerImage?`、`runtime?`(native/wine)、`gamePort?`、`serverDir?`、`k8sNamespace?` 等、`settings`(WorldSettings 片段) | 建立後的實例(`InstanceSummary` 形狀) | 名稱重複回 409；`gamePort` 省略時從 8211 起自動找可用埠 |
-| `GET /api/instances/:id` | — | 型別 `InstanceDetail`(含 `settings`、`serverDir`、`effectiveServerDir`、`autoStart` 等) | |
+| `GET /api/instances/:id` | — | 型別 `InstanceDetail`(含 `settings`、`serverDir`、`effectiveServerDir`、`autoStart` 等) | 啟用 Docker 共用網路時另含 `dockerNetwork: { name, hostname }`，空連線設定預設使用該 DNS 名稱 |
 | `PUT /api/instances/:id/connection` | `{ restApiUrl?, rconAddress?, palDefenderAddress? }` | 已保存的連線設定 | 完整取代設定，`{}` 或空字串恢復預設；新連線立即生效，不修改遊戲監聽埠 |
 | `DELETE /api/instances/:id` | — | `204` | 真正刪除:停行程/移除容器、刪 agent 自管目錄；k8s 只縮到 0,保留叢集 PVC |
 | `PUT /api/instances/:id/auto-start` | `{ enabled }` | `{ autoStart }` | agent 啟動時自動開服(每實例) |

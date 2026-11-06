@@ -11,6 +11,7 @@ import type { InstanceRecord } from "./store.js";
 import { configPlatformDir } from "./platform.js";
 import { diffIniAgainstSnapshot, renderPalWorldSettingsIni } from "./settings-ini.js";
 import { imageDigest, registryImageDigest } from "./image-digest.js";
+import { dockerNetworkName, instanceHostname } from "./docker-network.js";
 
 export const docker = new Docker(); // default: /var/run/docker.sock
 
@@ -288,6 +289,17 @@ export async function createContainer(
     if (source) binds.push(`${source}:${mount.Destination}${mount.RW ? "" : ":ro"}`);
   }
 
+  const network = dockerNetworkName();
+  const endpoints = Object.fromEntries(
+    Object.entries(previous?.NetworkSettings?.Networks ?? {}).map(([name, endpoint]) =>
+      [name, { Aliases: endpoint.Aliases ?? undefined, IPAMConfig: endpoint.IPAMConfig ?? undefined }]),
+  );
+  if (network) {
+    endpoints[network] = { ...endpoints[network], Aliases: [...new Set([
+      ...(endpoints[network]?.Aliases ?? []), instanceHostname(rec.id),
+    ])] };
+  }
+
   const container = await docker.createContainer({
     ...previous?.Config,
     name: containerName(rec),
@@ -297,6 +309,7 @@ export async function createContainer(
     Cmd: launchArgs,
     HostConfig: {
       ...previous?.HostConfig,
+      ...(network ? { NetworkMode: network } : {}),
       PortBindings: bindings,
       Binds: binds,
       Mounts: previous?.HostConfig.Mounts?.map((mount) => ({
@@ -307,12 +320,29 @@ export async function createContainer(
       })),
       RestartPolicy: previous?.HostConfig.RestartPolicy ?? { Name: "unless-stopped" },
     },
-    ...(previous ? { NetworkingConfig: { EndpointsConfig: Object.fromEntries(
-      Object.entries(previous.NetworkSettings?.Networks ?? {}).map(([name, network]) =>
-        [name, { Aliases: network.Aliases ?? undefined, IPAMConfig: network.IPAMConfig ?? undefined }]),
-    ) } } : {}),
+    ...(previous || network ? { NetworkingConfig: { EndpointsConfig: endpoints } } : {}),
   });
   return container.id;
+}
+
+/** Existing bridge containers can join the shared network without recreation. */
+async function ensureSharedNetwork(rec: InstanceRecord, info: Docker.ContainerInspectInfo): Promise<void> {
+  const name = dockerNetworkName();
+  if (!name) return;
+  const hostname = instanceHostname(rec.id);
+  const endpoint = info.NetworkSettings?.Networks?.[name];
+  if (endpoint?.Aliases?.includes(hostname)) return;
+  const network = docker.getNetwork(name);
+  if (endpoint) {
+    if (info.State.Running || info.State.Restarting || info.State.Paused) {
+      throw Object.assign(new Error("共享網路需要更新 DNS 別名,請先停止伺服器再啟動"), { statusCode: 409 });
+    }
+    await network.disconnect({ Container: info.Id });
+  }
+  await network.connect({ Container: info.Id, EndpointConfig: {
+    Aliases: [...new Set([...(endpoint?.Aliases ?? []), hostname])],
+    ...(endpoint?.IPAMConfig ? { IPAMConfig: endpoint.IPAMConfig } : {}),
+  } });
 }
 
 /** Docker bindings are immutable. Recreate only a stopped runtime when settings
@@ -333,10 +363,12 @@ async function containerForStart(rec: InstanceRecord, instanceDir: string): Prom
       if (info.State.Running || info.State.Restarting || info.State.Paused) {
         throw Object.assign(new Error("Docker 端口設定已變更,請先停止伺服器再啟動以套用"), { statusCode: 409 });
       }
+      const network = dockerNetworkName();
+      if (network) await docker.getNetwork(network).inspect();
       previous = info;
       await container.remove({ force: false });
       container = null;
-    }
+    } else await ensureSharedNetwork(rec, info);
   }
   if (!container) {
     const id = await createContainer(rec, instanceDir, previous);

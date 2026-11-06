@@ -1,6 +1,8 @@
 import type { InstanceRecord } from "./store.js";
+import { dockerNetworkName, instanceHostname } from "./docker-network.js";
 
 function defaultHost(rec: InstanceRecord): string {
+  if (rec.backend === "docker" && dockerNetworkName()) return instanceHostname(rec.id);
   return rec.backend === "k8s" && rec.k8sServiceName && rec.k8sNamespace
     ? `${rec.k8sServiceName}.${rec.k8sNamespace}` : "127.0.0.1";
 }

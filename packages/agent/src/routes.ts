@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { dockerNetworkName, instanceHostname } from "./docker-network.js";
 import { execFileSync } from "node:child_process";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
@@ -781,6 +782,9 @@ export function registerRoutes(
       settings: rec.settings,
       autoStart: rec.autoStart ?? false,
       connection: rec.connection ?? {},
+      ...(rec.backend === "docker" && dockerNetworkName() ? {
+        dockerNetwork: { name: dockerNetworkName()!, hostname: instanceHostname(rec.id) },
+      } : {}),
     };
   });
 

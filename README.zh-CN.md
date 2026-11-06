@@ -173,6 +173,7 @@ agent 只有一道门:**本机(loopback)免验证,其他一律要 token。**
 | `PALSERVER_STATS_URL` | 官方统计端点 | 改成自架的统计后端 |
 | `PALSERVER_GITHUB_REPO` | `io-software-ai/palserver-gui` | 自我更新要看哪个 repo 的 Releases |
 | `PALSERVER_IMAGE_VANILLA` | `palserver/vanilla:latest` | docker 后端用的映像 |
+| `PALSERVER_DOCKER_NETWORK` | 源码运行未设；Compose 为 `palserver-gui` | Agent 与游戏共用的自定义网络；开启后默认通过实例 DNS 别名连接 |
 
 ### 数据放在哪
 
@@ -204,6 +205,23 @@ docker compose up -d --build agent  # 见 docker-compose.yml
 
 需要挂载 `docker.sock`,而且 host 上的文件夹路径要与容器内一致(实例目录会被 bind-mount 进游戏容器)。
 
+**共享 Docker 网络和名字解析**：Compose 会创建 `palserver-gui` 自定义 bridge 网络，并把 Agent
+接入；Agent 创建的游戏容器也会接入此网络。每个实例有固定 DNS 别名 `palserver-<实例ID>`，
+改显示名称或重建容器后仍有效，实例“设置 → 服务器连接地址”会显示网络和别名。
+连接地址留空时，Docker 实例的 REST、RCON、PalDefender 会自动使用该别名和各自的游戏监听端口。
+手动保存的访问地址仍然优先；希望改用自动 DNS 时，请清空相应字段并保存。
+
+升级后重新构建 Agent，再正常停止并启动游戏实例。已有普通 bridge 容器会加入共享网络；
+端口映射不变时无需重建，已有附加网络和数据挂载保留。若容器已被手动接入同一网络但缺少
+固定别名，也需先停止再启动以更新别名。显式 `host`/`container:` 网络模式不自动迁移，需保留
+可达的自定义访问地址。Agent 若曾配置 `network_mode: host`，使用此 Compose 共享网络时请移除
+该项，保留 `8250:8250` 端口映射。
+
+可通过 `.env` 中的 `PALSERVER_DOCKER_NETWORK=my-palworld` 修改网络名；Compose 和 Agent
+会使用同一个值。自行运行 Agent 时，须先创建该自定义网络，并确保 Agent 也已接入。
+如果复用由其他部署管理的既有网络，应将 Compose 的对应网络声明为 `external: true` 并移除
+`driver`，避免 Compose 接管它。容器 DNS 只用于容器间通信；玩家仍通过游戏服务器的外部地址加入。
+
 **自定义管理连接地址**：在实例的“实例设置 → 服务器连接地址”中填写 Agent 能够访问的地址：
 
 - REST API：例如 `http://192.168.1.10:8212` 或 `https://example.com/proxy/v1/api`。
@@ -211,12 +229,13 @@ docker compose up -d --build agent  # 见 docker-compose.yml
 - RCON：例如 `192.168.1.10:25575`；IPv6 使用 `[::1]:25575`。
 - PalDefender REST（可选）：例如 `192.168.1.10:8213`，使用独立地址和原有 Token。
 
-每个实例单独保存，保存后立即用于新连接；留空恢复默认（native/docker 为 `127.0.0.1`，
-k8s 为实例的 Service DNS）。REST 和 RCON 继续使用世界设置中的管理员密码；这些访问地址
+每个实例单独保存，保存后立即用于新连接；留空恢复默认（native 为 `127.0.0.1`，
+docker 开启共享网络时为实例 DNS 别名、否则为 `127.0.0.1`，k8s 为实例的 Service DNS）。
+REST 和 RCON 继续使用世界设置中的管理员密码；这些访问地址
 不会修改游戏配置里的监听端口，也不会替代启用 REST/RCON 的开关。
 
-Agent 在 Docker 中运行时，`127.0.0.1` 是 Agent 容器自身，请填写可达的宿主机内网 IP，
-或同一 Docker 网络中可解析的游戏容器名。地址配置不会自动创建网络或放行防火墙。
+Agent 在 Docker 中运行时，`127.0.0.1` 是 Agent 容器自身。也可手动填写可达的宿主机内网 IP，
+或同一 Docker 网络中可解析的游戏容器名。访问地址字段本身不会创建网络或放行防火墙。
 新建游戏容器会映射启用的 RCON TCP 端口。在世界设置中开启/关闭 RCON 或修改端口后，
 正常停止并启动或重启游戏即可；Agent 会在启动时校验映射，必要时重建已停止的容器，
 保留原有数据挂载和数据卷，无需再去端口设置重复保存。

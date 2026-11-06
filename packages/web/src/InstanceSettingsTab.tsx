@@ -79,9 +79,9 @@ function ConnectionSettingsCard({ client, detail, onChanged }: {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const fields = [
-    { key: "restApiUrl", label: "REST API 访问地址", placeholder: `http://192.168.1.10:${detail.settings.RESTAPIPort}` },
-    { key: "rconAddress", label: "RCON 访问地址", placeholder: `192.168.1.10:${detail.settings.RCONPort}` },
-    { key: "palDefenderAddress", label: "PalDefender REST 访问地址（可选）", placeholder: "192.168.1.10:8213" },
+    { key: "restApiUrl", label: "REST API 访问地址", placeholder: `http://${detail.dockerNetwork?.hostname ?? "192.168.1.10"}:${detail.settings.RESTAPIPort}` },
+    { key: "rconAddress", label: "RCON 访问地址", placeholder: `${detail.dockerNetwork?.hostname ?? "192.168.1.10"}:${detail.settings.RCONPort}` },
+    { key: "palDefenderAddress", label: "PalDefender REST 访问地址（可选）", placeholder: `${detail.dockerNetwork?.hostname ?? "192.168.1.10"}:8213` },
   ] as const;
   const save = async () => {
     setError(null);
@@ -100,6 +100,9 @@ function ConnectionSettingsCard({ client, detail, onChanged }: {
   return (
     <div className={`${card} flex flex-col gap-3`}>
       <h3 className="text-sm font-extrabold">{t("服务器连接地址")}</h3>
+      {detail.dockerNetwork && <p className="break-all text-xs text-ink-muted">
+        {t("共享网络")}: {detail.dockerNetwork.name} · DNS: <code>{detail.dockerNetwork.hostname}</code>
+      </p>}
       <p className="text-[13px] text-ink-muted">
         {t("填写管理程序能够访问的地址。留空使用默认地址；保存后立即用于新的连接，不改变游戏监听端口。")}
       </p>

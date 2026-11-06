@@ -13,6 +13,14 @@ services:
       - "8250:8250"
     environment:
       PALSERVER_DATA_DIR: /var/lib/palserver
+      PALSERVER_DOCKER_NETWORK: ${PALSERVER_DOCKER_NETWORK:-palserver-gui}
+    networks:
+      - palserver
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/palserver:/var/lib/palserver
+
+networks:
+  palserver:
+    name: ${PALSERVER_DOCKER_NETWORK:-palserver-gui}
+    driver: bridge

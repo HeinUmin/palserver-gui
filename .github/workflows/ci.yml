@@ -17,7 +17,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm --filter @palserver/agent exec tsx --test src/docker-build.test.ts src/docker-bindings.test.ts src/docker-config.test.ts src/connections.test.ts src/rcon.test.ts
+      - run: pnpm --filter @palserver/agent exec tsx --test src/docker-build.test.ts src/docker-bindings.test.ts src/docker-network.test.ts src/docker-config.test.ts src/connections.test.ts src/rcon.test.ts
       - run: pnpm build
 
   docker-agent:
@@ -30,7 +30,7 @@ jobs:
         run: docker run --rm --network none palserver/agent:ci node --test packages/agent/dist/connections.test.js
       - name: Check game-user permissions and Docker config paths
         run: docker run --rm --network none palserver/agent:ci node --test packages/agent/dist/docker-config.test.js
-      - name: Check RCON mapping refresh and persistent volumes with real Docker
+      - name: Check shared network DNS, RCON mapping refresh and volumes with real Docker
         run: |
           mkdir -p "$RUNNER_TEMP/palserver-bindings-test"
           docker run --rm \
