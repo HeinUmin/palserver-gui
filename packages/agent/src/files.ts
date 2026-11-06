@@ -4,6 +4,7 @@ import type { DirEntry, FileContent } from "@palserver/shared";
 import type { DriverContext } from "./driver.js";
 import type { InstanceRecord } from "./store.js";
 import { serverRoot } from "./native.js";
+import { configPlatformDir } from "./platform.js";
 
 /** Text files above this size are refused by the editor (upload/download still work). */
 const MAX_EDIT_BYTES = 2 * 1024 * 1024;
@@ -31,6 +32,20 @@ export function fileRoot(rec: InstanceRecord, ctx: DriverContext): string {
     throw badRequest("伺服器尚未安裝 — 先啟動一次讓 agent 下載伺服器", 409);
   }
   return fs.realpathSync(root);
+}
+
+/** Raw settings UI uses full server-relative paths. Docker exposes only
+ * Pal/Saved, and its authoritative world INI is the Agent-managed source. */
+export function fileLocation(rec: InstanceRecord, ctx: DriverContext, relPath: string): { root: string; path: string } {
+  if (rec.backend === "docker") {
+    const prefix = `Config/${configPlatformDir(rec)}/`;
+    const rel = relPath.startsWith("Pal/Saved/") ? relPath.slice("Pal/Saved/".length) : relPath;
+    if (rel === `${prefix}PalWorldSettings.ini`) {
+      return { root: fs.realpathSync(path.join(ctx.instanceDir, "config")), path: "PalWorldSettings.ini" };
+    }
+    if (rel === `${prefix}Engine.ini`) return { root: fileRoot(rec, ctx), path: rel };
+  }
+  return { root: fileRoot(rec, ctx), path: relPath };
 }
 
 /**

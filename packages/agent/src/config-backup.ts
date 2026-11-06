@@ -185,6 +185,7 @@ export function readConfigSnapshot(ctx: DriverContext, id: string): ConfigSnapsh
 /** docker bind-mount: ${instanceDir}/saved = Pal/Saved, so config is under saved/Config/... */
 function nativeConfigFile(rec: InstanceRecord, ctx: DriverContext, name: ConfigSnapshotFileName): string {
   if (rec.backend === "docker") {
+    if (name === "PalWorldSettings.ini") return path.join(ctx.instanceDir, "config", name);
     return path.join(ctx.instanceDir, "saved", "Config", configPlatformDir(rec), name);
   }
   return path.join(serverRoot(rec, ctx), "Pal", "Saved", "Config", configPlatformDir(rec), name);
