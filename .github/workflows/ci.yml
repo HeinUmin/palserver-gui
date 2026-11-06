@@ -18,3 +18,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm build
+
+  docker-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Agent image
+        run: docker build -t palserver/agent:ci -f packages/agent/Dockerfile .
+      - name: Check image contents and Agent startup without external network
+        run: >-
+          docker run --rm --network none --tmpfs /tmp
+          -e PALSERVER_DATA_DIR=/tmp/palserver-smoke
+          -e PALSERVER_NO_OPEN=1
+          --mount type=bind,src="${{ github.workspace }}/scripts/smoke-agent-image.mjs",dst=/app/smoke-agent-image.mjs,readonly
+          palserver/agent:ci node /app/smoke-agent-image.mjs

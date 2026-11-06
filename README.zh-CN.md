@@ -199,10 +199,22 @@ agent 只有一道门:**本机(loopback)免验证,其他一律要 token。**
 **用 Docker 跑 agent 本身**(Linux 主机):
 
 ```sh
-docker compose up -d          # 见 docker-compose.yml
+docker compose up -d --build agent  # 见 docker-compose.yml
 ```
 
 需要挂载 `docker.sock`,而且 host 上的文件夹路径要与容器内一致(实例目录会被 bind-mount 进游戏容器)。
+
+Agent 镜像包含 `images/` 游戏镜像构建目录，无需额外挂载源码。首次创建 Docker 实例时，
+若宿主机尚无对应的内置游戏镜像，Agent 会自动构建；请确保服务器能访问镜像源和下载源。
+升级到本修复后，请执行上面的命令重新构建并重建 Agent，保留 `/var/lib/palserver` 数据目录。
+可检查镜像内容：
+
+```sh
+docker compose exec agent ls /app/images/vanilla
+```
+
+应包含 `Dockerfile` 和 `entrypoint.sh`。选择 Docker 后端时，游戏运行在独立容器中；
+在 Agent 容器内选择 Native 仍会运行在该容器内，本配置不提供 Native 游戏运行环境和端口映射。
 
 **纯 Web 站点 + 远程 agent** —— Release 里的 `palserver-web.zip` 是可独立部署的前端;将网站地址添加到 agent 的
 `PALSERVER_WEB_ORIGINS`,玩家就能从公开站台连回自己家里的 agent。
