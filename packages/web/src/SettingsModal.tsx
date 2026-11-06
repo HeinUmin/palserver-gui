@@ -192,7 +192,15 @@ export function SettingsModal({
         </div>
 
         {/* 贊助者識別碼(先行版)—— 未公布前用 SHOW_SPONSOR_FEATURES 隱藏 */}
-        {SHOW_SPONSOR_FEATURES && lic && (
+        {lic?.tier === "personal-noncommercial" && (
+          <p className="border-t border-line pt-3 text-xs text-ink-muted">
+            {lang === "en" ? "Personal noncommercial build: all local features are enabled without a sponsor code."
+              : lang === "ja" ? "個人・非商用ビルド: スポンサーコードなしでローカル機能を利用できます。"
+              : lang === "zh-CN" ? "个人非商业自用版本：本地功能已启用，无需赞助者识别码。"
+              : "個人非商業自用版本:本機功能已啟用,無需贊助者識別碼。"}
+          </p>
+        )}
+        {SHOW_SPONSOR_FEATURES && lic && lic.tier !== "personal-noncommercial" && (
           <div className="border-t border-line pt-3">
             <h3 className="inline-flex items-center gap-1.5 text-sm font-extrabold">
               <FiStar className="size-4 text-pal" /> {t("贊助者識別碼")}
