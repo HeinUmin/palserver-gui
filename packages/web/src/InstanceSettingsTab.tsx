@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FiAlertTriangle, FiCopy, FiDownloadCloud, FiFolder, FiHardDrive, FiLayout, FiSave, FiTrash2 } from "react-icons/fi";
 import type { InstanceDetail } from "@palserver/shared";
-import { ConnectionSettingsSchema } from "@palserver/shared";
+import { ConnectionSettingsSchema, legacyConnectionAddress } from "@palserver/shared";
 import type { AgentClient } from "./api";
 import { CopyPath } from "./CopyPath";
 import { FileBrowserDialog } from "./FileManager";
@@ -70,28 +70,21 @@ export function InstanceSettingsTab({
 function ConnectionSettingsCard({ client, detail, onChanged }: {
   client: AgentClient; detail: InstanceDetail; onChanged: () => void;
 }) {
-  const [values, setValues] = useState({
-    restApiUrl: detail.connection?.restApiUrl ?? "",
-    rconAddress: detail.connection?.rconAddress ?? "",
-    palDefenderAddress: detail.connection?.palDefenderAddress ?? "",
-  });
+  const [address, setAddress] = useState(detail.connection?.address ?? legacyConnectionAddress(detail.connection) ?? "");
+  const hasLegacy = detail.connection?.address === undefined &&
+    !!(detail.connection?.restApiUrl || detail.connection?.rconAddress || detail.connection?.palDefenderAddress);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const fields = [
-    { key: "restApiUrl", label: "REST API 访问地址", placeholder: `http://${detail.dockerNetwork?.hostname ?? "192.168.1.10"}:${detail.settings.RESTAPIPort}` },
-    { key: "rconAddress", label: "RCON 访问地址", placeholder: `${detail.dockerNetwork?.hostname ?? "192.168.1.10"}:${detail.settings.RCONPort}` },
-    { key: "palDefenderAddress", label: "PalDefender REST 访问地址（可选）", placeholder: `${detail.dockerNetwork?.hostname ?? "192.168.1.10"}:8213` },
-  ] as const;
   const save = async () => {
     setError(null);
     setSaved(false);
-    const parsed = ConnectionSettingsSchema.safeParse(values);
+    const parsed = ConnectionSettingsSchema.safeParse({ address });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
     setBusy(true);
     try {
       const result = await client.updateConnection(detail.id, parsed.data);
-      setValues({ restApiUrl: result.restApiUrl ?? "", rconAddress: result.rconAddress ?? "", palDefenderAddress: result.palDefenderAddress ?? "" });
+      setAddress(result.address ?? "");
       setSaved(true);
       onChanged();
     } catch (err) { setError(err instanceof Error ? err.message : String(err)); }
@@ -104,19 +97,23 @@ function ConnectionSettingsCard({ client, detail, onChanged }: {
         {t("共享网络")}: {detail.dockerNetwork.name} · DNS: <code>{detail.dockerNetwork.hostname}</code>
       </p>}
       <p className="text-[13px] text-ink-muted">
-        {t("填写管理程序能够访问的地址。留空使用默认地址；保存后立即用于新的连接，不改变游戏监听端口。")}
+        {t("所有管理连接共用此 IP、容器名或 URL。留空使用 localhost；保存后立即用于新的连接。")}
       </p>
       <p className="text-xs text-ink-muted">
-        {t("REST 地址支持 http/https，可包含 /v1/api。RCON 填写主机:端口。REST 和 RCON 继续使用管理员密码，PalDefender 使用原有 Token。")}
+        {t("不要填写端口。REST 和 RCON 使用世界设置中的端口，PalDefender 使用自身配置中的端口。认证方式保持不变。")}
       </p>
-      {fields.map(({ key, label, placeholder }) => (
-        <label key={key} className={labelCls}>
-          {t(label)}
-          <input className={inputCls} value={values[key]} placeholder={placeholder} disabled={busy}
-            autoComplete="off" spellCheck={false}
-            onChange={(e) => { setValues((v) => ({ ...v, [key]: e.target.value })); setSaved(false); }} />
-        </label>
-      ))}
+      {hasLegacy && !saved && <p className="text-xs text-ink-muted">
+        {t("旧版独立地址仍在使用。保存将统一替换旧配置；留空保存则恢复 localhost。")}
+      </p>}
+      <label className={labelCls}>
+        {t("统一管理访问地址")}
+        <input className={inputCls} value={address} placeholder="localhost" disabled={busy}
+          autoComplete="off" spellCheck={false}
+          onChange={(e) => { setAddress(e.target.value); setSaved(false); }} />
+      </label>
+      <p className="text-xs text-ink-muted">
+        REST API: {String(detail.settings.RESTAPIPort)} · RCON: {String(detail.settings.RCONPort)} · {t("PalDefender 端口自动读取")}
+      </p>
       {error && <p className={errorCls} role="alert">{error}</p>}
       {saved && <p className="text-xs text-grass" role="status">{t("连接地址已保存")}</p>}
       <button className={`${btn} self-start`} onClick={() => void save()} disabled={busy}>

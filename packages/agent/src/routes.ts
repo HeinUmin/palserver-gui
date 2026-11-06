@@ -792,7 +792,9 @@ export function registerRoutes(
   app.put("/api/instances/:id/connection", async (req) => {
     const rec = getOr404((req.params as { id: string }).id);
     const body = ConnectionSettingsSchema.parse(req.body);
-    const connection = Object.fromEntries(Object.entries(body).filter(([, value]) => value));
+    const connection = body.address !== undefined
+      ? { address: body.address }
+      : Object.fromEntries(Object.entries(body).filter(([, value]) => value));
     return store.update(rec.id, { connection }).connection;
   });
 

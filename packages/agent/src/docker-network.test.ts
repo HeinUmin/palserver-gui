@@ -40,19 +40,22 @@ function setup(t: TestContext) {
   return { dir, info, order, remove, connect, disconnect, create, inspectNetwork };
 }
 
-test("shared-network DNS is the default for Docker connections, with explicit overrides taking precedence", (t) => {
+test("shared-network DNS can be selected explicitly while blank connections use localhost", (t) => {
   setup(t);
   const hostname = instanceHostname(rec.id);
-  assert.equal(restApiBaseUrl(rec), `http://${hostname}:${rec.settings.RESTAPIPort}/v1/api`);
-  assert.equal(rconEndpoint(rec).host, hostname);
-  assert.equal(palDefenderBaseUrl(rec, 8213), `http://${hostname}:8213/v1/pdapi`);
+  assert.equal(restApiBaseUrl(rec), `http://localhost:${rec.settings.RESTAPIPort}/v1/api`);
+  assert.equal(rconEndpoint(rec).host, "localhost");
+  assert.equal(palDefenderBaseUrl(rec, 8213), "http://localhost:8213/v1/pdapi");
+  const byName = { ...rec, connection: { address: hostname } };
+  assert.equal(restApiBaseUrl(byName), `http://${hostname}:${rec.settings.RESTAPIPort}/v1/api`);
+  assert.equal(rconEndpoint(byName).host, hostname);
   assert.equal(restApiBaseUrl({ ...rec, name: "renamed" }), restApiBaseUrl(rec));
   const custom = { ...rec, connection: { restApiUrl: "http://custom:9000", rconAddress: "custom:9001", palDefenderAddress: "custom:9002" } };
   assert.equal(restApiBaseUrl(custom), "http://custom:9000/v1/api");
   assert.equal(rconEndpoint(custom).host, "custom");
   assert.equal(palDefenderBaseUrl(custom, 8213), "http://custom:9002/v1/pdapi");
-  assert.match(restApiBaseUrl({ ...rec, backend: "native" }), /127\.0\.0\.1/);
-  assert.match(restApiBaseUrl({ ...rec, backend: "k8s", k8sServiceName: "game", k8sNamespace: "pal" }), /game\.pal/);
+  assert.match(restApiBaseUrl({ ...rec, backend: "native" }), /localhost/);
+  assert.match(restApiBaseUrl({ ...rec, backend: "k8s", k8sServiceName: "game", k8sNamespace: "pal" }), /localhost/);
 });
 
 test("new game containers join the configured network with a stable alias", async (t) => {

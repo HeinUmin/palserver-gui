@@ -59,6 +59,7 @@ try {
   sharedNetwork = await docker.createNetwork({ Name: `palserver-${id}`, Driver: "bridge" });
   await sharedNetwork.connect({ Container: agentId });
   process.env.PALSERVER_DOCKER_NETWORK = `palserver-${id}`;
+  rec.connection = { address: instanceHostname(id) };
   await startInstance(rec, dir);
   const migrated = await find();
   assert.equal(migrated.id, original.id);
