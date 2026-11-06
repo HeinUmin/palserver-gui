@@ -168,6 +168,10 @@ async function ensureImageExists(rec: InstanceRecord, image: string): Promise<vo
       const stream = await docker.buildImage({ context: ctx, src }, { t: image });
       await trackProgress(stream, rec.id);
     }
+    // A completed HTTP stream does not guarantee that Docker produced an image.
+    await docker.getImage(image).inspect().catch(() => {
+      throw new Error(`鏡像準備完成後仍找不到 ${image};請檢查 Docker build/pull 日誌。`);
+    });
   } finally {
     building.delete(rec.id);
     buildProgress.delete(rec.id);
@@ -179,7 +183,14 @@ function trackProgress(stream: NodeJS.ReadableStream, id: string): Promise<void>
   return new Promise((resolve, reject) => {
     docker.modem.followProgress(
       stream,
-      (err: Error | null) => (err ? reject(err) : resolve()),
+      (err: Error | null, output: { error?: string; errorDetail?: { message?: string } }[]) => {
+        if (err) return reject(err);
+        // Docker reports build/pull failures as JSON events even with HTTP 200.
+        // docker-modem only rejects transport errors, so inspect the events too.
+        const failure = output.find((evt) => evt.error || evt.errorDetail?.message);
+        if (failure) return reject(new Error(failure.errorDetail?.message || failure.error));
+        resolve();
+      },
       (evt: { progressDetail?: { current?: number; total?: number }; status?: string }) => {
         const pd = evt.progressDetail;
         if (pd?.current != null && pd?.total != null && pd.total > 0) {

@@ -4,7 +4,8 @@
 # Use it via: PALSERVER_IMAGE_VANILLA=palserver/dev-stub:latest pnpm dev:agent
 FROM alpine:3.21
 
-COPY --chmod=755 entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod 755 /entrypoint.sh
 
 EXPOSE 8211/udp 8212/tcp
 

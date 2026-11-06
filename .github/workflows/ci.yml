@@ -17,6 +17,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm --filter @palserver/agent exec tsx --test src/docker-build.test.ts
       - run: pnpm build
 
   docker-agent:
@@ -32,3 +33,9 @@ jobs:
           -e PALSERVER_NO_OPEN=1
           --mount type=bind,src="${{ github.workspace }}/scripts/smoke-agent-image.mjs",dst=/app/smoke-agent-image.mjs,readonly
           palserver/agent:ci node /app/smoke-agent-image.mjs
+      - name: Build vanilla game image through the Agent Docker API
+        run: >-
+          docker run --rm
+          --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock
+          --mount type=bind,src="${{ github.workspace }}/scripts/smoke-game-build.mjs",dst=/app/scripts/smoke-game-build.mjs,readonly
+          palserver/agent:ci node /app/scripts/smoke-game-build.mjs

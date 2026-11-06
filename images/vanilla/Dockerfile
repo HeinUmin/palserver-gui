@@ -24,7 +24,10 @@ USER palworld
 ENV HOME=/home/palworld USER=palworld
 WORKDIR /home/palworld
 
-COPY --chmod=755 entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
+USER root
+RUN chmod 755 /entrypoint.sh
+USER palworld
 
 # /data/saved  -> Pal/Saved (world saves, agent bind-mounts this)
 # /data/config -> agent-rendered PalWorldSettings.ini (read-only)
