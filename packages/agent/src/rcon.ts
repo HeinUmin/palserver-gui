@@ -1,5 +1,6 @@
 import net from "node:net";
 import type { InstanceRecord } from "./store.js";
+import { rconEndpoint } from "./connections.js";
 
 /**
  * Minimal Source RCON client (the protocol Palworld's dedicated server
@@ -87,14 +88,6 @@ export function requireRcon(rec: InstanceRecord): void {
   }
 }
 
-/** Resolve the RCON host: k8s uses Service DNS, docker/native use localhost. */
-function rconHost(rec: InstanceRecord): string {
-  if (rec.backend === "k8s" && rec.k8sServiceName && rec.k8sNamespace) {
-    return `${rec.k8sServiceName}.${rec.k8sNamespace}`;
-  }
-  return "127.0.0.1";
-}
-
 /** `async` so a disabled-RCON instance rejects instead of throwing
  * synchronously — callers attach .catch() and would otherwise be bypassed. */
 export async function rconExec(
@@ -103,13 +96,13 @@ export async function rconExec(
   options?: { base64?: boolean; timeoutMs?: number },
 ): Promise<string> {
   requireRcon(rec);
-  const port = Number(rec.settings.RCONPort);
+  const { host, port } = rconEndpoint(rec);
   const password = String(rec.settings.AdminPassword);
   const useBase64 = options?.base64 ?? (resolveBase64 ? await resolveBase64(rec) : false);
   const timeoutMs = options?.timeoutMs ?? CONNECT_TIMEOUT_MS;
 
   return new Promise<string>((resolve, reject) => {
-    const socket = net.createConnection({ host: rconHost(rec), port });
+    const socket = net.createConnection({ host, port });
     socket.setTimeout(timeoutMs);
 
     let tail: Buffer<ArrayBufferLike> = Buffer.alloc(0);

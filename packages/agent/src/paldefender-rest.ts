@@ -1,3 +1,4 @@
+import { palDefenderBaseUrl } from "./connections.js";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -348,14 +349,6 @@ const PD_ERROR_MESSAGES: Record<string, string> = {
 
 class PdRestError extends Error {}
 
-/** Resolve the PD REST host: k8s uses Service DNS, docker/native use localhost. */
-function pdHost(rec: InstanceRecord): string {
-  if (rec.backend === "k8s" && rec.k8sServiceName && rec.k8sNamespace) {
-    return `${rec.k8sServiceName}.${rec.k8sNamespace}`;
-  }
-  return "127.0.0.1";
-}
-
 async function pdFetch<T>(
   rec: InstanceRecord,
   dir: string,
@@ -366,7 +359,7 @@ async function pdFetch<T>(
   const token = await ensureToken(rec, dir);
   let res: Response;
   try {
-    res = await fetch(`http://${pdHost(rec)}:${port}/v1/pdapi${endpoint}`, {
+    res = await fetch(`${palDefenderBaseUrl(rec, port)}${endpoint}`, {
       method: body === undefined ? "GET" : "POST",
       headers: {
         Authorization: `Bearer ${token}`,

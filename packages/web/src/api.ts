@@ -339,6 +339,10 @@ export class AgentClient {
     return this.request("/api/instances", { method: "POST", body: JSON.stringify(input) });
   }
 
+  updateConnection(id: string, connection: import("@palserver/shared").ConnectionSettings): Promise<import("@palserver/shared").ConnectionSettings> {
+    return this.request(`/api/instances/${id}/connection`, { method: "PUT", body: JSON.stringify(connection) });
+  }
+
   /** announceTemplate(含 {n} 佔位)只用於 stop/restart:agent 會用它在遊戲聊天室
    * 倒數公告(語言由呼叫端決定),秒數取自該實例伺服器重啟設定的 announceSeconds。 */
   action(

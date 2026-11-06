@@ -55,7 +55,9 @@ test("successful build verifies the image before creating a container", async (t
   } }));
   t.mock.method(docker, "buildImage", async () => Readable.from(['{"stream":"Successfully tagged"}\n']));
   const create = t.mock.method(docker, "createContainer", async () => ({ id: "created-container" }));
-  assert.equal(await createContainer(rec, dir), "created-container");
+  assert.equal(await createContainer({ ...rec, settings: { ...rec.settings, RCONEnabled: true, RCONPort: 25575 } }, dir), "created-container");
   assert.equal(inspections, 2);
   assert.equal(create.mock.callCount(), 1);
+  const options = create.mock.calls[0].arguments[0];
+  assert.deepEqual(options?.HostConfig?.PortBindings?.["25575/tcp"], [{ HostPort: "25575" }]);
 });

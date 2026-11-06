@@ -20,6 +20,8 @@ export * from "./map-helpers.js";
 export * from "./pal-avatars.generated.js";
 export * from "./log-events.js";
 export * from "./webhooks.js";
+export * from "./connections.js";
+import { ConnectionSettingsSchema, type ConnectionSettings } from "./connections.js";
 
 /** Value type an option can hold at runtime. */
 export type WorldOptionValue = string | number | boolean;
@@ -90,6 +92,7 @@ export const CreateInstanceSchema = z.object({
   /** docker only: 自訂容器鏡像(如 ghcr.io/…/palworld:tag);省略則用內建的
    * vanilla/modded 映像。方便沿用已在 Docker 部署的其他帕魯鏡像。 */
   dockerImage: z.string().trim().max(200).optional(),
+  connection: ConnectionSettingsSchema.optional(),
   /** docker/k8s: 執行環境。"wine" = 跑 Windows binary via Wine(支援 PalDefender)。
    *  undefined 或 "native" = 原生 Linux binary。 */
   runtime: z.enum(["native", "wine"]).optional(),
@@ -188,6 +191,7 @@ export interface InstanceSummary {
 }
 
 export interface InstanceDetail extends InstanceSummary {
+  connection?: ConnectionSettings;
   settings: WorldSettings;
   /** agent 啟動時自動開服(每實例;在「設定」分頁切換)。 */
   autoStart?: boolean;

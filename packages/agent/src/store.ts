@@ -3,8 +3,10 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { WorldSettingsSchema, type WorldSettings, type EngineSettings, type LaunchOptions } from "@palserver/shared";
 import { DATA_DIR } from "./env.js";
+import type { ConnectionSettings } from "@palserver/shared";
 
 export interface InstanceRecord {
+  connection?: ConnectionSettings;
   id: string;
   name: string;
   backend: "native" | "docker" | "k8s";
@@ -179,7 +181,7 @@ export class InstanceStore {
       Pick<
         InstanceRecord,
         // name/gamePort 由世界設定的 ServerName/PublicPort 鏡射(routes mirrorIdentityFromSettings)
-        "settings" | "serverDir" | "serverDirManaged" | "engineSettings" | "launchOptions" | "queryPort" | "name" | "gamePort" | "externalAddress" | "autoStart"
+        "settings" | "serverDir" | "serverDirManaged" | "engineSettings" | "launchOptions" | "queryPort" | "name" | "gamePort" | "externalAddress" | "autoStart" | "connection"
       >
     >,
   ): InstanceRecord {

@@ -23,6 +23,7 @@ import {
   type PalDefenderConfigPatch,
   type PalStatValues,
   CreateInstanceSchema,
+  ConnectionSettingsSchema,
   CustomPalSchema,
   UpdateSettingsSchema,
   WorldSettingsSchema,
@@ -750,6 +751,7 @@ export function registerRoutes(
       flavor: input.flavor,
       gamePort,
       queryPort: store.nextQueryPort([gamePort]),
+      connection: input.connection,
       dockerImage: input.backend === "docker" ? input.dockerImage?.trim() || undefined : undefined,
       runtime: input.runtime,
       serverDir,
@@ -778,7 +780,16 @@ export function registerRoutes(
       effectiveServerDir: rec.backend === "native" ? serverRoot(rec, ctxOf(rec)) : null,
       settings: rec.settings,
       autoStart: rec.autoStart ?? false,
+      connection: rec.connection ?? {},
     };
+  });
+
+  // Agent connection destinations take effect immediately; game listen settings are unchanged.
+  app.put("/api/instances/:id/connection", async (req) => {
+    const rec = getOr404((req.params as { id: string }).id);
+    const body = ConnectionSettingsSchema.parse(req.body);
+    const connection = Object.fromEntries(Object.entries(body).filter(([, value]) => value));
+    return store.update(rec.id, { connection }).connection;
   });
 
   /** 世界設定的 ServerName/PublicPort 鏡射回實例的 name/gamePort:
@@ -1104,7 +1115,7 @@ export function registerRoutes(
     }
     if (body.query !== undefined) updated = store.update(rec.id, { queryPort: body.query });
     if (body.paldefender !== undefined) await setPdRestPort(updated, ctxOf(updated), body.paldefender);
-    if (updated.backend === "docker" && (body.game !== undefined || body.query !== undefined || body.rest !== undefined)) {
+    if (updated.backend === "docker" && (body.game !== undefined || body.query !== undefined || body.rest !== undefined || body.rcon !== undefined)) {
       // Docker port bindings are materialized when the container is created;
       // remove only the stopped runtime so the next start recreates mappings.
       await dockerOps.removeInstanceContainer(updated);
