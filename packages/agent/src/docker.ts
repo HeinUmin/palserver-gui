@@ -221,15 +221,10 @@ function trackProgress(stream: NodeJS.ReadableStream, id: string): Promise<void>
   });
 }
 
-export async function createContainer(
-  rec: InstanceRecord,
-  instanceDir: string,
-): Promise<string> {
-  writeConfig(instanceDir, rec.settings);
-  prepareSavedPermissions(rec, instanceDir);
-
+/** The same desired port map is used for creation and stopped-container reconciliation. */
+function containerPorts(rec: InstanceRecord) {
   const ports: Record<string, object> = { "8211/udp": {} };
-  const bindings: Record<string, { HostPort: string }[]> = {
+  const bindings: Record<string, { HostPort: string; HostIp?: string }[]> = {
     "8211/udp": [{ HostPort: String(rec.gamePort) }],
   };
   if (rec.queryPort) {
@@ -247,6 +242,26 @@ export async function createContainer(
     bindings[`${rconPort}/tcp`] = [{ HostPort: String(rconPort) }];
   }
 
+  return { ports, bindings };
+}
+
+export async function createContainer(
+  rec: InstanceRecord,
+  instanceDir: string,
+  previous?: Docker.ContainerInspectInfo,
+): Promise<string> {
+  writeConfig(instanceDir, rec.settings);
+  prepareSavedPermissions(rec, instanceDir);
+  const { ports, bindings } = containerPorts(rec);
+  if (previous) {
+    const old = previous.HostConfig.PortBindings ?? {};
+    for (const [port, entries] of Object.entries(bindings)) {
+      const removed = Object.keys(old).filter((key) => !(key in bindings) && key.split("/")[1] === port.split("/")[1]);
+      const prior = old[port] ?? (removed.length === 1 ? old[removed[0]] : undefined);
+      entries.forEach((entry, i) => { if (prior?.[i]?.HostIp) entry.HostIp = prior[i].HostIp; });
+    }
+  }
+
   const launchArgs = [
     `-port=${rec.gamePort}`,
     ...(rec.queryPort ? [`-queryport=${rec.queryPort}`] : []),
@@ -257,22 +272,77 @@ export async function createContainer(
   // image 不存在時自動 build/pull(而非 throw 409 讓使用者手動處理)。
   await ensureImageExists(rec, image);
 
+  const binds = previous?.HostConfig.Binds ? [...previous.HostConfig.Binds] : [
+    `${path.join(instanceDir, "saved")}:/data/saved`,
+    `${path.join(instanceDir, "config")}:/data/config:ro`,
+  ];
+  // Image-declared anonymous volumes (e.g. Wine's /palworld) must be reattached.
+  // Removing a stopped runtime must never replace its persistent volume with an empty one.
+  const covered = new Set([
+    ...binds.map((bind) => bind.split(":")[1]),
+    ...(previous?.HostConfig.Mounts ?? []).map((mount) => mount.Target),
+  ]);
+  for (const mount of previous?.Mounts ?? []) {
+    if (covered.has(mount.Destination)) continue;
+    const source = mount.Type === "volume" ? mount.Name : mount.Type === "bind" ? mount.Source : null;
+    if (source) binds.push(`${source}:${mount.Destination}${mount.RW ? "" : ":ro"}`);
+  }
+
   const container = await docker.createContainer({
+    ...previous?.Config,
     name: containerName(rec),
     Image: image,
-    Labels: { [INSTANCE_LABEL]: rec.id },
+    Labels: { ...previous?.Config.Labels, [INSTANCE_LABEL]: rec.id },
     ExposedPorts: ports,
     Cmd: launchArgs,
     HostConfig: {
+      ...previous?.HostConfig,
       PortBindings: bindings,
-      Binds: [
-        `${path.join(instanceDir, "saved")}:/data/saved`,
-        `${path.join(instanceDir, "config")}:/data/config:ro`,
-      ],
-      RestartPolicy: { Name: "unless-stopped" },
+      Binds: binds,
+      Mounts: previous?.HostConfig.Mounts?.map((mount) => ({
+        ...mount,
+        Source: mount.Type === "volume" && !mount.Source
+          ? previous.Mounts.find((actual) => actual.Destination === mount.Target)?.Name ?? mount.Source
+          : mount.Source,
+      })),
+      RestartPolicy: previous?.HostConfig.RestartPolicy ?? { Name: "unless-stopped" },
     },
+    ...(previous ? { NetworkingConfig: { EndpointsConfig: Object.fromEntries(
+      Object.entries(previous.NetworkSettings?.Networks ?? {}).map(([name, network]) =>
+        [name, { Aliases: network.Aliases ?? undefined, IPAMConfig: network.IPAMConfig ?? undefined }]),
+    ) } } : {}),
   });
   return container.id;
+}
+
+/** Docker bindings are immutable. Recreate only a stopped runtime when settings
+ * (including changes through world-settings) no longer match its published ports. */
+async function containerForStart(rec: InstanceRecord, instanceDir: string): Promise<Docker.Container> {
+  let container = await findContainer(rec);
+  let previous: Docker.ContainerInspectInfo | undefined;
+  if (container) {
+    const info = await container.inspect();
+    // These explicit network modes do not use Docker's published port table.
+    if (info.HostConfig.NetworkMode === "host" || info.HostConfig.NetworkMode?.startsWith("container:")) return container;
+    const actual = info.HostConfig.PortBindings ?? {};
+    const desired = containerPorts(rec).bindings;
+    const matches = Object.keys(actual).length === Object.keys(desired).length &&
+      Object.entries(desired).every(([port, bindings]) => actual[port]?.length === bindings.length &&
+        bindings.every((binding) => actual[port]?.some((old: { HostPort: string }) => old.HostPort === binding.HostPort)));
+    if (!matches) {
+      if (info.State.Running || info.State.Restarting || info.State.Paused) {
+        throw Object.assign(new Error("Docker 端口設定已變更,請先停止伺服器再啟動以套用"), { statusCode: 409 });
+      }
+      previous = info;
+      await container.remove({ force: false });
+      container = null;
+    }
+  }
+  if (!container) {
+    const id = await createContainer(rec, instanceDir, previous);
+    container = docker.getContainer(id);
+  }
+  return container;
 }
 
 export async function startInstance(rec: InstanceRecord, instanceDir: string): Promise<void> {
@@ -292,12 +362,8 @@ export async function startInstance(rec: InstanceRecord, instanceDir: string): P
     void (async () => {
       try {
         await ensureImageExists(rec, image);
-        let container = await findContainer(rec);
-        if (!container) {
-          await createContainer(rec, instanceDir);
-          container = await findContainer(rec);
-        }
-        await container!.start().catch((err: { statusCode?: number }) => {
+        const container = await containerForStart(rec, instanceDir);
+        await container.start().catch((err: { statusCode?: number }) => {
           if (err.statusCode !== 304) throw err;
         });
       } catch (err) {
@@ -313,12 +379,8 @@ export async function startInstance(rec: InstanceRecord, instanceDir: string): P
     return;
   }
 
-  let container = await findContainer(rec);
-  if (!container) {
-    await createContainer(rec, instanceDir);
-    container = await findContainer(rec);
-  }
-  await container!.start().catch((err: { statusCode?: number }) => {
+  const container = await containerForStart(rec, instanceDir);
+  await container.start().catch((err: { statusCode?: number }) => {
     if (err.statusCode !== 304) throw err; // 304 = already running
   });
 }
