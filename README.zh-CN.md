@@ -232,6 +232,12 @@ docker compose exec agent ls /app/images/vanilla
 应包含 `Dockerfile` 和 `entrypoint.sh`。选择 Docker 后端时，游戏运行在独立容器中；
 在 Agent 容器内选择 Native 仍会运行在该容器内，本配置不提供 Native 游戏运行环境和端口映射。
 
+内置 Linux 游戏镜像使用 UID/GID `1000:1000`；容器化 Agent 在启动实例前会修复
+`saved` 根目录、配置目录及现有配置文件的归属，使游戏能够生成配置和存档。
+`config` 是 Agent 写入、游戏只读的配置来源，游戏实际使用的副本位于可写的
+`saved/Config/LinuxServer`。GUI 原始配置编辑器修改的是 Agent 配置来源，下次启动应用。
+自定义镜像的用户权限由部署者配置，不自动更改其目录归属。
+
 **纯 Web 站点 + 远程 agent** —— Release 里的 `palserver-web.zip` 是可独立部署的前端;将网站地址添加到 agent 的
 `PALSERVER_WEB_ORIGINS`,玩家就能从公开站台连回自己家里的 agent。
 

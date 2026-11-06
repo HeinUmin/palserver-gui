@@ -2849,7 +2849,8 @@ export function registerRoutes(
     const rec = getOr404((req.params as { id: string }).id);
     const { path: rel } = PathQuery.parse(req.query);
     if (rec.backend === "k8s") return readFileInPodBrowser(rec, rel);
-    return files.readFile(files.fileRoot(rec, ctxOf(rec)), rel);
+    const location = files.fileLocation(rec, ctxOf(rec), rel);
+    return { ...files.readFile(location.root, location.path), path: rel };
   });
 
   app.put("/api/instances/:id/files/content", async (req) => {
@@ -2863,7 +2864,8 @@ export function registerRoutes(
       await writeFileInPodBrowser(rec, body.path, body.content);
       return { saved: body.path, applied: "on-next-restart" };
     }
-    files.writeFile(files.fileRoot(rec, ctxOf(rec)), body.path, body.content);
+    const location = files.fileLocation(rec, ctxOf(rec), body.path);
+    files.writeFile(location.root, location.path, body.content);
     return { saved: body.path, applied: "on-next-restart" };
   });
 
@@ -2909,7 +2911,8 @@ export function registerRoutes(
       reply.code(201);
       return { uploaded: rel, size: content.length };
     }
-    const target = files.uploadTarget(files.fileRoot(rec, ctxOf(rec)), rel);
+    const location = files.fileLocation(rec, ctxOf(rec), rel);
+    const target = files.uploadTarget(location.root, location.path);
     await pipeline(req.raw, fs.createWriteStream(target));
     reply.code(201);
     return { uploaded: rel, size: fs.statSync(target).size };

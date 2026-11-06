@@ -121,6 +121,26 @@ export function writeConfig(instanceDir: string, settings: WorldSettings): void 
   }
 }
 
+/** Our Linux game images run as UID/GID 1000, while the packaged Agent runs
+ * as root. Prepare only the writable saved/config directories, never the
+ * read-only managed config source or the rest of an existing world. */
+export function prepareSavedPermissions(rec: InstanceRecord, instanceDir: string): void {
+  if (rec.dockerImage?.trim() || rec.runtime === "wine") return;
+  if (process.platform !== "linux" || process.getuid?.() !== 0) return;
+  const saved = path.join(instanceDir, "saved");
+  const dirs = [saved, path.join(saved, "Config"), path.join(saved, "Config", configPlatformDir(rec))];
+  for (const dir of dirs) {
+    fs.mkdirSync(dir, { recursive: true });
+    if (fs.lstatSync(dir).isSymbolicLink()) throw new Error(`拒絕修改符號連結的權限:${dir}`);
+    fs.chownSync(dir, 1000, 1000);
+  }
+  for (const name of ["PalWorldSettings.ini", "Engine.ini"]) {
+    const file = path.join(dirs[2], name);
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (stat?.isFile()) fs.chownSync(file, 1000, 1000);
+  }
+}
+
 /** 偵測使用者手動改了 bind-mount 裡的 PalWorldSettings.ini 的部分(docker 版)。 */
 export function detectManualIniEdits(instanceDir: string): Partial<WorldSettings> {
   return diffIniAgainstSnapshot(
@@ -206,6 +226,7 @@ export async function createContainer(
   instanceDir: string,
 ): Promise<string> {
   writeConfig(instanceDir, rec.settings);
+  prepareSavedPermissions(rec, instanceDir);
 
   const ports: Record<string, object> = { "8211/udp": {} };
   const bindings: Record<string, { HostPort: string }[]> = {
@@ -257,6 +278,7 @@ export async function createContainer(
 export async function startInstance(rec: InstanceRecord, instanceDir: string): Promise<void> {
   writeConfig(instanceDir, rec.settings);
   applyEngineIniDocker(rec, instanceDir);
+  prepareSavedPermissions(rec, instanceDir);
 
   // image 不存在時觸發背景 build/pull(IIFE),立刻回 installing 狀態;
   // build 完成後繼續 createContainer + start。仿 native.ts slow path 模式。
