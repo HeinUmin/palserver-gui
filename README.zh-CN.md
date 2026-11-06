@@ -173,6 +173,7 @@ agent 只有一道门:**本机(loopback)免验证,其他一律要 token。**
 | `PALSERVER_STATS_URL` | 官方统计端点 | 改成自架的统计后端 |
 | `PALSERVER_GITHUB_REPO` | `io-software-ai/palserver-gui` | 自我更新要看哪个 repo 的 Releases |
 | `PALSERVER_IMAGE_VANILLA` | `palserver/vanilla:latest` | docker 后端用的映像 |
+| `PALSERVER_DOCKER_NETWORK` | 源码运行未设；Compose 为 `palserver-gui` | Agent 与游戏共用的自定义网络；连接地址可填写实例 DNS 别名 |
 
 ### 数据放在哪
 
@@ -204,19 +205,41 @@ docker compose up -d --build agent  # 见 docker-compose.yml
 
 需要挂载 `docker.sock`,而且 host 上的文件夹路径要与容器内一致(实例目录会被 bind-mount 进游戏容器)。
 
-**自定义管理连接地址**：在实例的“实例设置 → 服务器连接地址”中填写 Agent 能够访问的地址：
+**共享 Docker 网络和名字解析**：Compose 会创建 `palserver-gui` 自定义 bridge 网络，并把 Agent
+接入；Agent 创建的游戏容器也会接入此网络。每个实例有固定 DNS 别名 `palserver-<实例ID>`，
+改显示名称或重建容器后仍有效，实例“设置 → 服务器连接地址”会显示网络和别名。
+需要名字解析时，在统一管理访问地址中填写该别名即可。留空明确使用 `localhost`，
+不会自动选择 Docker DNS；端口从各服务配置读取。
 
-- REST API：例如 `http://192.168.1.10:8212` 或 `https://example.com/proxy/v1/api`。
-  未填写 `/v1/api` 时自动补齐，支持反向代理路径前缀。
-- RCON：例如 `192.168.1.10:25575`；IPv6 使用 `[::1]:25575`。
-- PalDefender REST（可选）：例如 `192.168.1.10:8213`，使用独立地址和原有 Token。
+升级后重新构建 Agent，再正常停止并启动游戏实例。已有普通 bridge 容器会加入共享网络；
+端口映射不变时无需重建，已有附加网络和数据挂载保留。若容器已被手动接入同一网络但缺少
+固定别名，也需先停止再启动以更新别名。显式 `host`/`container:` 网络模式不自动迁移，需保留
+可达的自定义访问地址。Agent 若曾配置 `network_mode: host`，使用此 Compose 共享网络时请移除
+该项，保留 `8250:8250` 端口映射。
 
-每个实例单独保存，保存后立即用于新连接；留空恢复默认（native/docker 为 `127.0.0.1`，
-k8s 为实例的 Service DNS）。REST 和 RCON 继续使用世界设置中的管理员密码；这些访问地址
-不会修改游戏配置里的监听端口，也不会替代启用 REST/RCON 的开关。
+可通过 `.env` 中的 `PALSERVER_DOCKER_NETWORK=my-palworld` 修改网络名；Compose 和 Agent
+会使用同一个值。自行运行 Agent 时，须先创建该自定义网络，并确保 Agent 也已接入。
+如果复用由其他部署管理的既有网络，应将 Compose 的对应网络声明为 `external: true` 并移除
+`driver`，避免 Compose 接管它。容器 DNS 只用于容器间通信；玩家仍通过游戏服务器的外部地址加入。
 
-Agent 在 Docker 中运行时，`127.0.0.1` 是 Agent 容器自身，请填写可达的宿主机内网 IP，
-或同一 Docker 网络中可解析的游戏容器名。地址配置不会自动创建网络或放行防火墙。
+**统一管理访问地址**：实例“设置 → 服务器连接地址”只有一个输入框，可填写
+`192.168.1.10`、`palserver-<实例ID>`、`http://game` 或 `https://example.com/proxy`。
+IP、主机名和容器名默认使用 HTTP，HTTP/HTTPS URL 也可带公共路径前缀。
+REST 与 PalDefender 使用 URL 的协议和路径前缀；RCON 仅使用其中的主机名。
+
+不要在地址中填写端口。REST 使用世界配置中的 `RESTAPIPort`，RCON 使用 `RCONPort`，
+PalDefender 使用自身配置文件中的端口。修改这些配置后，后续连接会使用新的端口。
+REST/RCON 仍使用世界设置中的管理员密码，PalDefender 仍使用原有 Token。
+
+每个实例单独保存，保存后立即用于新连接。留空使用 **`localhost`**，不自动选择 Docker
+别名或 k8s Service 名称。Agent 在容器里运行时，localhost 指向 Agent 自己；需要访问游戏
+容器时，应明确填写同网容器名、上方显示的 DNS 别名或可达的 IP。k8s 可填写对应 Service DNS。
+访问地址本身不会创建网络或修改游戏监听配置。
+
+旧版三个独立地址在升级后继续兼容，避免无提示改变已有连接；界面会提示旧配置仍在使用。
+保存统一地址后会替换旧配置；清空并保存会将全部服务恢复为 localhost。旧地址主机不一致时，
+不会擅自选择其中一台，请填写希望统一连接的目标。
+
 新建游戏容器会映射启用的 RCON TCP 端口。在世界设置中开启/关闭 RCON 或修改端口后，
 正常停止并启动或重启游戏即可；Agent 会在启动时校验映射，必要时重建已停止的容器，
 保留原有数据挂载和数据卷，无需再去端口设置重复保存。

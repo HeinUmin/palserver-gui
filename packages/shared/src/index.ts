@@ -191,6 +191,7 @@ export interface InstanceSummary {
 }
 
 export interface InstanceDetail extends InstanceSummary {
+  dockerNetwork?: { name: string; hostname: string };
   connection?: ConnectionSettings;
   settings: WorldSettings;
   /** agent 啟動時自動開服(每實例;在「設定」分頁切換)。 */

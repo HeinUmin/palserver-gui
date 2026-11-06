@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { dockerNetworkName, instanceHostname } from "./docker-network.js";
 import { execFileSync } from "node:child_process";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import {
@@ -781,6 +782,9 @@ export function registerRoutes(
       settings: rec.settings,
       autoStart: rec.autoStart ?? false,
       connection: rec.connection ?? {},
+      ...(rec.backend === "docker" && dockerNetworkName() ? {
+        dockerNetwork: { name: dockerNetworkName()!, hostname: instanceHostname(rec.id) },
+      } : {}),
     };
   });
 
@@ -788,7 +792,9 @@ export function registerRoutes(
   app.put("/api/instances/:id/connection", async (req) => {
     const rec = getOr404((req.params as { id: string }).id);
     const body = ConnectionSettingsSchema.parse(req.body);
-    const connection = Object.fromEntries(Object.entries(body).filter(([, value]) => value));
+    const connection = body.address !== undefined
+      ? { address: body.address }
+      : Object.fromEntries(Object.entries(body).filter(([, value]) => value));
     return store.update(rec.id, { connection }).connection;
   });
 
